@@ -1,0 +1,115 @@
+<?php
+
+/**
+ * Returns an array of node types we are targeting our editor lists for.
+ *
+ * @return array
+ */
+function editor_list_node_types() {
+  // If we need to add more node types, we just add them to this array.
+  return array('article');
+}
+
+/**
+ * Implements hook_node_access().
+ */
+function editor_list_node_access($node, $op, $account) {
+
+  $node_types = editor_list_node_types();
+  if ( ! is_object($node) || ! in_array($node->type, $node_types) || $op !== 'update') {
+    return NODE_ACCESS_IGNORE;
+  }
+
+  $allowed_uids = editor_list_uids_from_list($node);
+  if (empty($allowed_uids)) {
+    return NODE_ACCESS_IGNORE;
+  }
+
+  if (in_array($account->uid, $allowed_uids)) {
+    return NODE_ACCESS_ALLOW;
+  }
+}
+
+/**
+ * Implements hook_field_access().
+ */
+function editor_list_field_access($op, $field, $entity_type, $entity, $account) {
+  $node_types = editor_list_node_types();
+  if ($entity_type === 'node' && is_object($entity) && in_array($entity->type, $node_types)) {
+    return editor_list_control_field_access($op, $field, $entity_type, $entity, $account);
+  }
+}
+
+/**
+ * Controls field access for editor list targeted nodes.
+ */
+function editor_list_control_field_access($op, $field, $entity_type, $entity, $account) {
+  if ($op !== 'edit') {
+    return;
+  }
+
+  $uids = editor_list_uids_from_list($entity);
+  if (!in_array($account->uid, $uids)) {
+    return;
+  }
+
+  // Here we can add other field names to deny access if we want.
+  $deny = array('field_editors');
+  if (in_array($field['field_name'], $deny)) {
+    return false;
+  }
+}
+
+/**
+ * Implements hook_form_BASE_FORM_ID_alter().
+ */
+function editor_list_form_article_node_form_alter(&$form, &$form_state, $form_id) {
+  $form['#after_build'][] = 'editor_list_node_form_after_build';
+}
+
+/**
+ * After build function for node forms we use to move the editors list field
+ * into the authorship group
+ */
+function editor_list_node_form_after_build($form, &$form_state) {
+  // If the user doesn't have access to the editors list field, we do nothing.
+  $field = field_info_field('field_editors');
+  if ( ! field_access('edit', $field, 'node', $form['#entity'])) {
+    return $form;
+  }
+
+  // If the user doesn't have access to authorship group, we do nothing.
+  if ($form['author']['#access'] === 0) {
+    return $form;
+  }
+
+  $field_editors = $form['field_editors'];
+  $field_editors['#weight'] = 0;
+  $form['author']['additional_authors'] = $field_editors;
+  $form['field_editors'] = array();
+
+  return $form;
+}
+
+/**
+ * Helper function that returns the uids of the users in the editor list of a
+ * given node.
+ *
+ * @param $node
+ *  The node object.
+ *
+ * @return array
+ *  Array of user ids.
+ */
+function editor_list_uids_from_list($node) {
+  $users = field_get_items('node', $node, 'field_editors');
+
+  $allowed_uids = array();
+  if ($users) {
+    $allowed_uids = array_map(function($user) {
+      return $user['target_id'];
+    }, $users);
+  }
+
+  return $allowed_uids;
+}
