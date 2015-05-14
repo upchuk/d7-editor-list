@@ -1,4 +1,4 @@
 name = Editor List
-description = Demo module illustrating a custom solution for having multiple editors on a node.
+description = Custom module illustrating a custom solution for having multiple editors on a node.
 core = 7.x
 dependencies[] = entityreference
